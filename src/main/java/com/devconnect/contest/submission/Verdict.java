@@ -1,4 +1,7 @@
 package com.devconnect.contest.submission;
 
-public class Verdict {
+
+
+public enum Verdict {
+    PENDING, AC, WA, TLE, MLE, RE, CE, AC_PENDING
 }
