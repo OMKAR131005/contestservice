@@ -43,4 +43,8 @@ public class Problem {
     @OneToMany(mappedBy = "problem", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<TestCase> testCases = new ArrayList<>();
+
+    @Column(name = "created_by")
+    private Long createdBy;
+
 }

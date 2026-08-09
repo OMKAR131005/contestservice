@@ -1,6 +1,7 @@
 package com.devconnect.contest.submission;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -15,10 +16,11 @@ public class SubmissionController {
     private final SubmissionRepository submissionRepository;
 
     @PostMapping
-    public SubmissionResultDTO submitCode(@RequestBody SubmitCodeDTO dto) {
+    public SubmissionResultDTO submitCode(@AuthenticationPrincipal Long userId,
+                                          @RequestBody SubmitCodeDTO dto) {
 
         Submission submission = Submission.builder()
-                .userId(dto.getUserId())
+                .userId(userId) // from JWT, never trust the request body for this
                 .code(dto.getCode())
                 .language(dto.getLanguage())
                 .build();
@@ -28,10 +30,10 @@ public class SubmissionController {
         return submissionService.submissionResult(submission, dto.getProblemId());
     }
 
-    // GET /api/submissions?userId=1&problemId=3
+    // GET /api/submissions?problemId=3  (userId comes from the logged-in user's token)
     @GetMapping
     public List<SubmissionSummaryDTO> getSubmissions(
-            @RequestParam Long userId,
+            @AuthenticationPrincipal Long userId,
             @RequestParam Long problemId) {
 
         return submissionRepository.findByUserIdAndProblem_IdOrderBySubmittedAtDesc(userId, problemId)

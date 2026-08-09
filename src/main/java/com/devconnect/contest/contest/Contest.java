@@ -38,4 +38,17 @@ public class Contest {
     )
     @Builder.Default
     private List<Problem> problems = new ArrayList<>();
+
+    @Column(name = "created_by", nullable = false)
+    private Long createdBy; // userId — no FK, user lives in a different DB
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private ContestType type = ContestType.USER_CREATED;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private ContestVisibility visibility = ContestVisibility.PUBLIC;
 }

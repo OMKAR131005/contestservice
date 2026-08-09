@@ -1,14 +1,19 @@
 package com.devconnect.contest.submission;
 
+import com.devconnect.contest.contest.Contest;
+import com.devconnect.contest.contest.ContestParticipantRepository;
+import com.devconnect.contest.contest.ContestRepository;
+import com.devconnect.contest.contest.ContestVisibility;
 import com.devconnect.contest.judgesubmission.JudgeResult;
 import com.devconnect.contest.judgesubmission.JudgeService;
 import com.devconnect.contest.problem.Problem;
 import com.devconnect.contest.problem.ProblemRepository;
 import com.devconnect.contest.problem.TestCase;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @RequiredArgsConstructor
@@ -18,15 +23,44 @@ public class SubmissionService {
     private final ProblemRepository problemRepository;
     private final SubmissionRepository submissionRepository;
     private final JudgeService judgeService;
+    private final ContestRepository contestRepository;
+    private final ContestParticipantRepository contestParticipantRepository;
 
-    @Transactional
-    public SubmissionResultDTO submissionResult(Submission submission, Long problemId) {
+    public SubmissionResultDTO submissionResult(Submission submission, Long problemId, Long contestId) {
 
         Problem problem = problemRepository.findById(problemId)
                 .orElseThrow(() -> new IllegalArgumentException("problem not found"));
 
+        if (contestId != null) {
+            Contest contest = contestRepository.findById(contestId)
+                    .orElseThrow(() -> new IllegalArgumentException("contest not found"));
+
+            LocalDateTime now = LocalDateTime.now();
+            if (now.isBefore(contest.getStartTime()) || now.isAfter(contest.getEndTime())) {
+                throw new IllegalStateException("Contest is not active");
+            }
+
+            if (contest.getVisibility() == ContestVisibility.PRIVATE) {
+                boolean isCreator = contest.getCreatedBy().equals(submission.getUserId());
+                boolean isInvited = contestParticipantRepository
+                        .existsByContestIdAndUserId(contestId, submission.getUserId());
+                if (!isCreator && !isInvited) {
+                    throw new AccessDeniedException("You don't have access to this contest");
+                }
+            }
+
+            boolean problemInContest = contest.getProblems().stream()
+                    .anyMatch(p -> p.getId().equals(problemId));
+            if (!problemInContest) {
+                throw new IllegalArgumentException("This problem is not part of the contest");
+            }
+
+            submission.setContest(contest);
+        }
+
+        submission.setProblem(problem); // required — Problem FK is nullable=false on Submission
+
         List<TestCase> testCases = problem.getTestCases();
-        submission.setProblem(problem);
 
         int testCaseNumber = 0;
 
