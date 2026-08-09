@@ -9,6 +9,7 @@ import com.devconnect.contest.judgesubmission.JudgeService;
 import com.devconnect.contest.problem.Problem;
 import com.devconnect.contest.problem.ProblemRepository;
 import com.devconnect.contest.problem.TestCase;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,8 @@ public class SubmissionService {
     private final ContestRepository contestRepository;
     private final ContestParticipantRepository contestParticipantRepository;
 
+
+    @Transactional
     public SubmissionResultDTO submissionResult(Submission submission, Long problemId, Long contestId) {
 
         Problem problem = problemRepository.findById(problemId)
@@ -102,6 +105,7 @@ public class SubmissionService {
                 .build();
     }
 
+    @Transactional
     private SubmissionResultDTO buildFailureResult(Submission submission, TestCase testCase,
                                                    int testCaseNumber, Verdict verdict,
                                                    String actualOutput, String message) {

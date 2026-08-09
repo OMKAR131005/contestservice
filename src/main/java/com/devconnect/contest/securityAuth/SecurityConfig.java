@@ -47,7 +47,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/contests/**").hasRole("ADMIN")
 
                         // debug endpoint — admin only (or delete this controller entirely before real launch)
-                        .requestMatchers("/api/judge-test/**").hasRole("ADMIN")
+                        .requestMatchers("/api/judge-test/**").hasRole("ADMIN").requestMatchers("/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html").permitAll()
 
                         // submissions — must be logged in, any role
                         .requestMatchers("/api/submissions/**").authenticated()

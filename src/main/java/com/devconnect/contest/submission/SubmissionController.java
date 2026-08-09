@@ -27,7 +27,7 @@ public class SubmissionController {
         // contest is optional — set only if provided
         // (contestId -> Contest entity lookup can be added later once ContestService exists)
 
-        return submissionService.submissionResult(submission, dto.getProblemId());
+        return submissionService.submissionResult(submission, dto.getProblemId(), dto.getContestId());
     }
 
     // GET /api/submissions?problemId=3  (userId comes from the logged-in user's token)

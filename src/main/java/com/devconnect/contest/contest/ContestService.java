@@ -44,7 +44,9 @@ public class ContestService {
         contestRepository.save(contest);
     }
 
-    public Contest createContest(CreateContestDTO contest, Long createdBy) {
+
+    @Transactional
+    public ContestResponseDTO createContest(CreateContestDTO contest, Long createdBy) {
         Contest contest1 = Contest.builder()
                 .createdBy(createdBy)
                 .description(contest.getDescription())
@@ -70,37 +72,55 @@ public class ContestService {
             }
         }
 
-        return contest1;
+        return  ContestResponseDTO.builder()
+                .id(contest1.getId())
+                .title(contest1.getTitle())
+                .description(contest1.getDescription())
+                .startTime(contest1.getStartTime())
+                .endTime(contest1.getEndTime())
+                .type(contest1.getType())
+                .visibility(contest1.getVisibility())
+                .createdBy(contest1.getCreatedBy())
+                .problems(
+                        contest1.getProblems().stream()
+                                .map(problem -> ContestResponseDTO.ProblemSummary.builder()
+                                        .id(problem.getId())
+                                        .title(problem.getTitle())
+                                        .points(problem.getPoints())
+                                        .build())
+                                .toList()
+                )
+                .build();
     }
 
     @Transactional
-    public List<Contest> getMyInvitations(Long userId) {
+    public List<ContestResponseDTO> getMyInvitations(Long userId) {
         List<ContestParticipant> list = contestParticipantRepository.findByUserId(userId);
-        return list.stream().map(ContestParticipant::getContest).toList();
+        return list.stream().map(ContestParticipant::getContest).map(ContestResponseDTO::from).toList();
     }
 
     @Transactional
-    public List<Contest> getVisibleContests(Long userId) {
-        return contestRepository.findVisibleContestsForUser(userId);
+    public List<ContestResponseDTO> getVisibleContests(Long userId) {
+        return contestRepository.findVisibleContestsForUser(userId).stream().map(ContestResponseDTO::from).toList();
     }
 
     @Transactional
-    public Contest getContestById(Long contestId, Long userId) {
+    public ContestResponseDTO getContestById(Long contestId, Long userId) {
         Contest contest = contestRepository.findById(contestId)
                 .orElseThrow(() -> new IllegalArgumentException("Contest not found"));
 
         if (contest.getType() == ContestType.SYSTEM
                 || contest.getVisibility() == ContestVisibility.PUBLIC) {
-            return contest;
+            return ContestResponseDTO.from(contest);
         }
 
         if (contest.getCreatedBy().equals(userId)) {
-            return contest;
+            return ContestResponseDTO.from(contest);
         }
 
         boolean isInvited = contestParticipantRepository.existsByContestIdAndUserId(contestId, userId);
         if (isInvited) {
-            return contest;
+            return ContestResponseDTO.from(contest);
         }
 
         throw new AccessDeniedException("You don't have access to this contest");
