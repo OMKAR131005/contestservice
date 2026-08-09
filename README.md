@@ -1,96 +1,76 @@
 # DevConnect Contest Service
 
-A standalone microservice that powers coding contests for [DevConnect](https://github.com/OMKAR131005/DevConnect) — a full-stack developer social networking platform. This service handles problem management, contest scheduling, code submissions, and automated judging, decoupled from the main DevConnect backend so it can scale independently under judging load.
+A standalone microservice for **DevConnect** that powers coding problems, contests, and code submissions with a custom-built Java judge — no external judging API required.
 
-## Why a Separate Service
+## Overview
 
-- **Resource isolation** — code execution/judging is CPU-intensive and benefits from scaling independently of the core social features (feed, profiles, chat).
-- **Security boundary** — untrusted user code execution is isolated from the main application and its user data.
-- **Independent deployment** — this service can be redeployed, scaled, or restarted without affecting the rest of DevConnect.
+This service owns all Problem / Contest / Submission data in its own MySQL database, completely separate from the main DevConnect backend's database. It validates the same JWT issued by the main backend using a **shared secret** — this service has no login endpoint of its own; it is a resource server only.
 
-## Architecture
-
-```
-DevConnect Main Backend (auth, users, social features)
-        │
-        │  shared JWT (cookie-based)
-        ▼
-Contest Service (this repo)
-        │
-        ├── MySQL (own database — problems, contests, submissions)
-        ├── Judge0 (code execution & verdict)
-        └── RabbitMQ (async submission result delivery)
-```
-
-- Authentication is **not duplicated** — this service validates the same JWT issued by the main DevConnect backend (shared secret), so users stay logged in across both services without a separate login.
-- Cross-service references (e.g., which user made a submission) are stored as plain IDs, not foreign keys, since user data lives in a separate database owned by the main backend.
+Cross-service references to users (`userId`) are stored as plain `Long` values, never as JPA foreign keys, since `User` lives in a different database entirely.
 
 ## Tech Stack
 
-- **Java / Spring Boot** — REST API
-- **Spring Security** — JWT-based auth, role-based access control (`USER` / `ADMIN`)
-- **Spring Data JPA / MySQL** — persistence (dedicated database, separate from the main DevConnect DB)
-- **Judge0** — sandboxed code execution and verdict generation
-- **RabbitMQ** — async communication for submission results
-- **JJWT** — JWT parsing and validation
+- Java, Spring Boot
+- Spring Security (JWT resource server, shared secret with main backend)
+- Spring Data JPA + MySQL
+- springdoc-openapi (Swagger UI)
+- Maven
 
-## Core Features
+## Key Features
 
-- **Problem management** — CRUD for coding problems with statements, constraints, difficulty, and test cases (admin-only write access)
-- **Sample vs. hidden test cases** — only sample cases are exposed to users; hidden cases are used for judging
-- **Contests** — scheduled contests bundling multiple problems with start/end windows
-- **Submissions** — code submission, async judging via Judge0, verdict tracking (`AC`, `WA`, `TLE`, `MLE`, `RE`, `CE`)
-- **Scoring** — points-based scoring feeding into DevConnect's skill-based ranking system
+### Custom Java Code Judge
+Rather than relying on an external judging API, this service compiles and runs Java submissions in-process:
+- Compiles submitted code to a temp directory and runs it with a memory cap (`-Xmx256m`)
+- Verdicts: `AC`, `WA`, `CE`, `RE`, `TLE`, `MLE`
+- Concurrent threads for stdin writing, stdout reading, and stderr reading avoid pipe-buffer deadlocks
+- Out-of-memory detection via non-zero exit code + `"OutOfMemoryError"` in stderr
+
+### Problems
+- Full CRUD (`POST/GET/PUT/DELETE /api/problems`)
+- Each problem has sample and hidden test cases — **hidden test cases are never exposed** through any API response (create, read, or update)
+- `createdBy` field: `null` = official/admin problem, non-null = user-created (feature not yet built)
+
+### Contests
+- **System contests**: auto-generated weekly via a scheduled job, built from the official problem pool
+- **User-created contests**: any authenticated user can create a contest; always forced to `USER_CREATED` type server-side to prevent privilege escalation
+- **Visibility**: `PUBLIC` (anyone can see) or `PRIVATE` (creator + explicitly invited participants only)
+- Contest responses use a dedicated response DTO (not raw entities) to avoid lazy-loading issues and to prevent hidden test cases from leaking through nested problem data
+
+### Submissions
+- `POST /api/submissions` — submits code against a problem, optionally scoped to a contest
+- User identity is always taken from the JWT (`@AuthenticationPrincipal`), never trusted from the request body
+- Contest submissions are validated against the contest's active time window and the user's access rights (public vs. private/invited)
+- Runs all test cases (sample + hidden), fast-fails on the first mismatch
+- Failure details (input/expected/actual) are only returned for **sample** test cases; hidden test case content is never leaked
+
+## API Documentation
+
+Interactive API docs are available via Swagger UI once the service is running:
+
+```
+http://localhost:<port>/swagger-ui.html
+```
+
+> Note: Swagger UI does not automatically send the auth cookie, so JWT-protected endpoints should still be tested via Postman (or another client that carries the cookie) rather than directly through Swagger UI.
+
+## Security
+
+- Stateless JWT authentication, validated against a secret shared with the main DevConnect backend
+- Role-based access control (`ADMIN` / authenticated user) on sensitive endpoints
+- Custom `401 Unauthorized` response for unauthenticated requests, custom `403 Forbidden` for authenticated-but-unauthorized requests
 
 ## Getting Started
 
-### Prerequisites
-
-- Java 17+
-- MySQL
-- Judge0 (self-hosted via Docker or hosted API)
-- RabbitMQ
-- The main [DevConnect backend](https://github.com/OMKAR131005/DevConnect) running, for shared JWT secret/cookie config
-
-### Configuration
-
-Copy the example properties file and fill in your local values:
-
 ```bash
-cp src/main/resources/application-example.properties src/main/resources/application.properties
-```
-
-Key values that **must match the main DevConnect backend** exactly:
-
-- `app.jwt.secret`
-- `app.cookie.name`
-
-`application.properties` is gitignored and should never be committed — use `application-example.properties` as the template for required keys.
-
-### Run
-
-```bash
+mvn clean install
 mvn spring-boot:run
 ```
 
-The service starts on the port configured in `application.properties` (default separate from the main backend's port).
-
-## API Overview
-
-| Endpoint | Method | Access | Description |
-|---|---|---|---|
-| `/api/problems` | GET | Public | List problems |
-| `/api/problems/{id}` | GET | Public | View problem (sample test cases only) |
-| `/api/problems` | POST | Admin | Create problem |
-| `/api/problems/{id}` | PUT | Admin | Update problem |
-| `/api/problems/{id}` | DELETE | Admin | Delete problem |
-
-*(Contest and submission endpoints follow the same pattern — full list in progress.)*
+Configure the following in `application.properties` / `application.yml`:
+- MySQL connection details (separate database from the main DevConnect backend)
+- `app.jwt.secret` — must match the main backend's JWT secret
+- `app.cookie.name` — must match the main backend's auth cookie name
 
 ## Status
 
-🚧 Actively under development as part of DevConnect's contest/ranking feature.
-
-## Related Repos
-
-- [DevConnect](https://github.com/OMKAR131005/DevConnect) — main platform (auth, profiles, social features)
+Actively in development as part of the DevConnect platform. Core judging, problem management, contest system, and submission flow are built and tested. Frontend integration and automated (JUnit/Mockito) test coverage are in progress.
